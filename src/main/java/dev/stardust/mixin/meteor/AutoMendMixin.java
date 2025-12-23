@@ -61,7 +61,7 @@ public abstract class AutoMendMixin extends Module {
     @Unique
     private void replaceElytra() {
         if (mc.player == null) return;
-        for (int n = 0; n < mc.player.getInventory().main.size(); n++) {
+        for (int n = 0; n < mc.player.getInventory().size(); n++) {
             ItemStack stack = mc.player.getInventory().getStack(n);
             if (stack.getItem() == Items.ELYTRA) {
                 if (Utils.hasEnchantment(stack, Enchantments.MENDING) && stack.getDamage() > 0) {
@@ -92,7 +92,7 @@ public abstract class AutoMendMixin extends Module {
     @Unique
     private int getDamagedElytraSlot() {
         if (mc.player == null) return -1;
-        for (int n = 0; n < mc.player.getInventory().main.size(); n++) {
+        for (int n = 0; n < mc.player.getInventory().size(); n++) {
             ItemStack stack = mc.player.getInventory().getStack(n);
             if (stack.getItem() == Items.ELYTRA) {
                 if (Utils.hasEnchantment(stack, Enchantments.MENDING) && stack.getDamage() > 0) {
