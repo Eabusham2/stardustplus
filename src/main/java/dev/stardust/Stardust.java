@@ -40,7 +40,7 @@ public class Stardust extends MeteorAddon {
         Commands.add(new LastSeen2b2t());
         Commands.add(new FirstSeen2b2t());
         Commands.add(new Queue());
-        Commands.add(new UUID());
+        // Commands.add(new UUID());
 
         Modules.get().add(new Honker());
         Modules.get().add(new WaxAura());
