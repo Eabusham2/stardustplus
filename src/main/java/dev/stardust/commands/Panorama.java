@@ -78,9 +78,9 @@ public class Panorama extends Command {
         instance = mc;
         screenshot = 0;
         preYaw = mc.player.getYaw();
-        prevYaw = mc.player.prevYaw;
+        prevYaw = mc.player.lastYaw;      // <-- fixed
         prePitch = mc.player.getPitch();
-        prevPitch = mc.player.prevPitch;
+        prevPitch = mc.player.lastPitch;  // <-- fixed
         currentPanoramaDir = panoramaDir;
         preWidth = mc.getWindow().getFramebufferWidth();
         preHeight = mc.getWindow().getFramebufferHeight();
@@ -170,9 +170,6 @@ public class Panorama extends Command {
         }
         if (!takingPanorama) return;
 
-        // When using Iris mod, the vanilla takePanorama impl will produce blank screenshots.
-        // Original issue: https://github.com/IrisShaders/Iris/issues/2196#issuecomment-1873043947
-        // To overcome this, I've reimplemented the vanilla takePanorama method in a way that works with Iris.
         switch (screenshot) {
             case 0 -> {
                 if (!isWarming) {
@@ -223,8 +220,8 @@ public class Panorama extends Command {
                     takingPanorama = false;
                     instance.player.setYaw(preYaw);
                     instance.player.setPitch(prePitch);
-                    instance.player.prevYaw = prevYaw;
-                    instance.player.prevPitch = prevPitch;
+                    instance.player.lastYaw = prevYaw;      // <-- fixed
+                    instance.player.lastPitch = prevPitch;  // <-- fixed
                     instance.gameRenderer.setRenderingPanorama(false);
                     instance.gameRenderer.setBlockOutlineEnabled(true);
                     instance.getWindow().setFramebufferWidth(preWidth);
@@ -233,8 +230,8 @@ public class Panorama extends Command {
                     instance.getFramebuffer().resize(preWidth, preHeight);
                     instance.worldRenderer.reload();
 
-                    timer = 100; // wait a few seconds for the screenshot files to get fully written to disk,
-                    readyToAssemble = true; // and then copy them into a resource pack (this avoids copying empty files.)
+                    timer = 100;
+                    readyToAssemble = true;
                     instance.player.sendMessage(
                         Text.of("§8<§2§o✨§8> §8§oFinalizing resource pack§2§o, §8§oplease wait§2§o..."), false
                     );
