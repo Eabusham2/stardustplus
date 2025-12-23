@@ -283,7 +283,7 @@ public class StardustUtil {
                             Text.of("§8<"+StardustUtil.rCC()+"§o✨§r§8> §7Created "+file.getName()+" in meteor-client folder."), false
                         );
                         Text msg = Text.of("§8<"+StardustUtil.rCC()+"§o✨§r§8> §7Click §2§lhere §r§7to open the file.");
-                        Style style = Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, file.getAbsolutePath()));
+                        Style style = Style.EMPTY.withClickEvent(new ClickEvent.OpenFile(file.toPath()));
 
                         MutableText txt = msg.copyContentOnly().setStyle(style);
                         mc.player.sendMessage(txt, false);
