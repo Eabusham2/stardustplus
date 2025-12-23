@@ -1,79 +1,84 @@
 package dev.stardust.mixin;
 
-import java.util.List;
-import java.util.Arrays;
-import net.minecraft.text.Text;
-import org.spongepowered.asm.mixin.Final;
-import org.spongepowered.asm.mixin.Mixin;
-import org.jetbrains.annotations.Nullable;
-import dev.stardust.modules.SignHistorian;
-import dev.stardust.modules.SignatureSign;
-import org.spongepowered.asm.mixin.Shadow;
-import net.minecraft.block.entity.SignText;
-import net.minecraft.client.gui.screen.Screen;
-import org.spongepowered.asm.mixin.injection.At;
-import net.minecraft.block.entity.SignBlockEntity;
-import net.minecraft.client.util.SelectionManager;
-import org.spongepowered.asm.mixin.injection.Inject;
+import dev.stardust.modules.AntiToS;
 import meteordevelopment.meteorclient.systems.modules.Modules;
-import dev.stardust.mixin.accessor.AbstractSignEditScreenAccessor;
+import meteordevelopment.meteorclient.systems.modules.render.NoRender;
+import net.minecraft.block.entity.SignBlockEntity;
+import net.minecraft.block.entity.SignText;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import net.minecraft.client.gui.screen.ingame.AbstractSignEditScreen;
+import net.minecraft.client.render.block.entity.AbstractSignBlockEntityRenderer;
 
-/**
- * @author Tas [0xTas] <root@0xTas.dev>
- **/
-@Mixin(AbstractSignEditScreen.class)
-public abstract class AbstractSignEditScreenMixin extends Screen {
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
-    @Shadow
-    private int currentRow;
-    @Shadow
-    public abstract void close();
-    @Shadow
-    @Final
-    protected SignBlockEntity blockEntity;
-    @Shadow
-    private @Nullable SelectionManager selectionManager;
-    @Shadow
-    protected abstract void setCurrentRowMessage(String message);
-
-    protected AbstractSignEditScreenMixin(Text title) { super(title); }
-
-    // See SignatureSign.java && SignHistorian.java
-    @Inject(method = "init", at = @At("TAIL"))
-    public void stardustMixinInit(CallbackInfo ci) {
-        if (this.client == null) return;
+@Mixin(AbstractSignBlockEntityRenderer.class)
+public abstract class AbstractSignBlockEntityRendererMixin {
+    // Keep your AntiToS text replacement (works off SignText)
+    @ModifyVariable(method = "renderText", at = @At("HEAD"), argsOnly = true)
+    private SignText modifyRenderedText(SignText signText) {
         Modules modules = Modules.get();
+        if (modules == null) return signText;
 
-        if (modules == null) return;
-        SignHistorian signHistorian = modules.get(SignHistorian.class);
-        SignatureSign signatureSign = modules.get(SignatureSign.class);
-        if (!signatureSign.isActive() && !signHistorian.isActive()) return;
+        AntiToS antiToS = modules.get(AntiToS.class);
+        if (antiToS == null || !antiToS.isActive()) return signText;
 
-        if (signatureSign.getAutoConfirm()) return;
-        SignText restoration = signHistorian.getRestoration(this.blockEntity);
-        if ((!signHistorian.isActive() || restoration == null) && signatureSign.isActive()) {
-            SignText signature = signatureSign.getSignature(this.blockEntity);
-            List<String> msgs = Arrays.stream(signature.getMessages(false)).map(Text::getString).toList();
-            String[] messages = new String[msgs.size()];
-            messages = msgs.toArray(messages);
+        String testText = Arrays.stream(signText.getMessages(false))
+            .map(Text::getString)
+            .collect(Collectors.joining(" "))
+            .trim();
 
-            ((AbstractSignEditScreenAccessor) this).setText(signature);
-            ((AbstractSignEditScreenAccessor) this).setMessages(messages);
-            if ((signatureSign.isActive() && signatureSign.signFreedom.get())) {
-                // bypass client-side length limits for sign text by using a truthy predicate in the SelectionManager
-                AbstractSignEditScreenAccessor accessor = ((AbstractSignEditScreenAccessor) this);
-                this.selectionManager = new SelectionManager(
-                    () -> accessor.getMessages()[this.currentRow], this::setCurrentRowMessage,
-                    SelectionManager.makeClipboardGetter(this.client), SelectionManager.makeClipboardSetter(this.client),
-                    string -> true
-                );
-            }
+        return antiToS.containsBlacklistedText(testText)
+            ? antiToS.familyFriendlySignText(signText)
+            : signText;
+    }
 
-            if (signatureSign.needsDisabling()) {
-                signatureSign.disable();
+    // NEW: cancel SIGN TEXT rendering here (instead of injecting into render(...))
+    @Inject(method = "renderText", at = @At("HEAD"), cancellable = true)
+    private void stardust$onRenderText(BlockPos pos, SignText signText, MatrixStack matrices,
+                                       VertexConsumerProvider vertexConsumers, int light,
+                                       int textLineHeight, int maxTextWidth, boolean front,
+                                       CallbackInfo ci) {
+        Modules mods = Modules.get();
+        if (mods == null) return;
+
+        NoRender noRender = mods.get(NoRender.class);
+        AntiToS antiToS = mods.get(AntiToS.class);
+
+        // Cody-sign hiding (by text match)
+        if (noRender != null && noRender.isActive()) {
+            var signSetting = noRender.settings.get("cody-signs");
+            if (signSetting != null && (boolean) signSetting.get() && isCodySignText(signText)) {
+                ci.cancel();
+                return;
             }
         }
+
+        // AntiToS NoRender mode (hide blacklisted sign text)
+        if (antiToS != null && antiToS.isActive() && antiToS.signMode.get().equals(AntiToS.SignMode.NoRender)) {
+            String joined = Arrays.stream(signText.getMessages(false))
+                .map(Text::getString)
+                .collect(Collectors.joining(" "));
+            if (antiToS.containsBlacklistedText(joined)) {
+                ci.cancel();
+            }
+        }
+    }
+
+    @Unique
+    private boolean isCodySignText(SignText text) {
+        return Arrays.stream(text.getMessages(false)).anyMatch(msg -> {
+            String s = msg.getString();
+            String lower = s.toLowerCase();
+            return s.contains("codysmile11") || lower.contains("has been here :)");
+        });
     }
 }
