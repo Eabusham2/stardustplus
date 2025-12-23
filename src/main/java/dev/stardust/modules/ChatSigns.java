@@ -624,18 +624,17 @@ public class ChatSigns extends Module {
 
             ++fullClusterAmount;
             lastFullClusterPos = sign.getPos();
-            Style clickESP = Style.EMPTY.withClickEvent(
-                new ClickEvent(
-                    ClickEvent.Action.RUN_COMMAND,
-                    "clickESP~chatSigns~"
-                        +sign.getPos().asLong()
-                )
-            ).withHoverEvent(
-                new HoverEvent(
-                    HoverEvent.Action.SHOW_TEXT,
-                    Text.literal(signsToHighlight.containsKey(sign.getPos()) ? "§4§oDisable §7§oESP for this sign." : "§2§oEnable §7§oESP for this sign.")
-                )
-            );
+            Style clickESP = Style.EMPTY
+    .withClickEvent(new ClickEvent.RunCommand(
+        "clickESP~chatSigns~" + sign.getPos().asLong()
+    ))
+    .withHoverEvent(new HoverEvent.ShowText(
+        Text.literal(signsToHighlight.containsKey(sign.getPos())
+            ? "§4§oDisable §7§oESP for this sign."
+            : "§2§oEnable §7§oESP for this sign."
+        )
+    ));
+
             if (signMessages.containsKey(textOnSign) && !sign.getPos().equals(lastFocusedSign)) {
                 int timesSeen = signMessages.get(textOnSign) + 1;
                 signMessages.put(textOnSign, timesSeen);

@@ -624,7 +624,7 @@ public class SignatureSign extends Module {
                         mc.player.sendMessage(Text.of("§8<"+StardustUtil.rCC()+"§o✨§r§8> §7Created autosign.txt in meteor-client folder."), false);
 
                         Text msg = Text.of("§8<"+StardustUtil.rCC()+"§o✨§r§8> §7Click §2§lhere §r§7to open the folder.");
-                        Style style = Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, meteorFolder.toFile().getAbsolutePath()));
+                        Style style = Style.EMPTY.withClickEvent(new ClickEvent.OpenFile(meteorFolder));
 
                         MutableText txt = msg.copyContentOnly().setStyle(style);
                         mc.player.sendMessage(txt, false);
@@ -661,7 +661,7 @@ public class SignatureSign extends Module {
                         mc.player.sendMessage(Text.of("§8<"+StardustUtil.rCC()+"§o✨§r§8> §7Created storysign.txt in meteor-client folder."), false);
 
                         Text msg = Text.of("§8<"+StardustUtil.rCC()+"§o✨§r§8> §7Click §2§lhere §r§7to open the folder.");
-                        Style style = Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_FILE, meteorFolder.toFile().getAbsolutePath()));
+                        Style style = Style.EMPTY.withClickEvent(new ClickEvent.OpenFile(meteorFolder));
 
                         MutableText txt = msg.copyContentOnly().setStyle(style);
                         mc.player.sendMessage(txt, false);
@@ -882,14 +882,14 @@ public class SignatureSign extends Module {
         Vec3d hitVec = Vec3d.ofCenter(pos);
         BlockHitResult hit = new BlockHitResult(hitVec, mc.player.getHorizontalFacing().getOpposite(), pos, false);
 
-        ItemStack current = mc.player.getInventory().getMainHandStack();
+        ItemStack current = mc.player.getMainHandStack();
         if (current.getItem() != dye) {
-            for (int n = 0; n < mc.player.getInventory().main.size(); n++) {
+            for (int n = 0; n < mc.player.getInventory().size(); n++) {
                 ItemStack stack = mc.player.getInventory().getStack(n);
                 if (stack.getItem() == dye) {
                     if (current.getItem() instanceof SignItem && current.getCount() > 1) dyeSlot = n;
                     if (n < 9) InvUtils.swap(n, true);
-                    else InvUtils.move().from(n).to(mc.player.getInventory().selectedSlot);
+                    else InvUtils.move().from(n).to(mc.player.getInventory().getSelectedSlot());
 
                     timer = 3;
                     return;
@@ -968,7 +968,7 @@ public class SignatureSign extends Module {
         if (timer == -1) {
             if (dyeSlot != -1) {
                 if (dyeSlot < 9) InvUtils.swapBack();
-                else InvUtils.move().from(mc.player.getInventory().selectedSlot).to(dyeSlot);
+                else InvUtils.move().from(mc.player.getInventory().getSelectedSlot()).to(dyeSlot);
                 dyeSlot = -1;
                 timer = 3;
             }

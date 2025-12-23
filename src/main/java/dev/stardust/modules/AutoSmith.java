@@ -1,28 +1,34 @@
 package dev.stardust.modules;
 
-import java.util.List;
-import java.util.ArrayList;
-import net.minecraft.item.*;
 import dev.stardust.Stardust;
-import net.minecraft.text.Text;
 import dev.stardust.util.MsgUtil;
-import net.minecraft.sound.SoundEvents;
-import meteordevelopment.orbit.EventHandler;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
+import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.utils.player.InvUtils;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.component.DataComponentTypes;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.item.equipment.ArmorMaterial;
 import net.minecraft.item.equipment.EquipmentType;
-import net.minecraft.screen.SmithingScreenHandler;
 import net.minecraft.item.equipment.trim.ArmorTrim;
-import meteordevelopment.meteorclient.utils.player.InvUtils;
-import meteordevelopment.meteorclient.systems.modules.Module;
-import meteordevelopment.meteorclient.events.world.TickEvent;
+import net.minecraft.registry.tag.ItemTags;
+import net.minecraft.screen.SmithingScreenHandler;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.text.Text;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author Tas [0xTas] <root@0xTas.dev>
  **/
 public class AutoSmith extends Module {
-    public AutoSmith() { super(Stardust.CATEGORY, "AutoSmith", "Automatically upgrade gear or trim armor in smithing tables."); }
+    public AutoSmith() {
+        super(Stardust.CATEGORY, "AutoSmith", "Automatically upgrade gear or trim armor in smithing tables.");
+    }
 
     private final SettingGroup modeSettings = settings.createGroup("Smithing Mode");
     private final SettingGroup trimSettings = settings.createGroup("Armor Trims");
@@ -30,8 +36,10 @@ public class AutoSmith extends Module {
     public enum SmithingMode {
         Trim, Upgrade
     }
+
     public enum ArmorMaterials {
         Iron, Gold, Chain, Turtle, Leather, Diamond, Netherite;
+
         public boolean materialEquals(ArmorMaterial material) {
             return switch (this) {
                 case Iron -> material == net.minecraft.item.equipment.ArmorMaterials.IRON;
@@ -44,6 +52,7 @@ public class AutoSmith extends Module {
             };
         }
     }
+
     public enum ArmorTrims {
         Eye("minecraft:eye"),
         Vex("minecraft:vex"),
@@ -65,9 +74,9 @@ public class AutoSmith extends Module {
         Wayfinder("minecraft:wayfinder");
 
         public final String label;
-
         ArmorTrims(String label) { this.label = label; }
     }
+
     public enum TrimMaterial {
         Iron("minecraft:iron"),
         Gold("minecraft:gold"),
@@ -82,7 +91,6 @@ public class AutoSmith extends Module {
         Netherite("minecraft:netherite");
 
         public final String label;
-
         TrimMaterial(String label) { this.label = label; }
     }
 
@@ -263,9 +271,37 @@ public class AutoSmith extends Module {
     private boolean resettingMaterials = false;
     private final List<EquipmentType> exhaustedArmorTypes = new ArrayList<>();
 
-    private ArmorMaterial getArmorMaterial(ItemStack armor) {
-        if (!(armor.getItem() instanceof ArmorItem)) return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
+    private boolean isArmorStack(ItemStack stack) {
+        return stack.isIn(ItemTags.HEAD_ARMOR)
+            || stack.isIn(ItemTags.CHEST_ARMOR)
+            || stack.isIn(ItemTags.LEG_ARMOR)
+            || stack.isIn(ItemTags.FOOT_ARMOR);
+    }
 
+    private int getItemSlotId(ItemStack itemStack) {
+        if (!itemStack.contains(DataComponentTypes.EQUIPPABLE)) return -1;
+        return itemStack.get(DataComponentTypes.EQUIPPABLE).slot().getEntitySlotId();
+    }
+
+    private EquipmentType getEquipmentType(ItemStack stack) {
+        // Prefer tags to avoid ArmorItem class dependency.
+        if (stack.isIn(ItemTags.FOOT_ARMOR)) return EquipmentType.BOOTS;
+        if (stack.isIn(ItemTags.LEG_ARMOR)) return EquipmentType.LEGGINGS;
+        if (stack.isIn(ItemTags.CHEST_ARMOR)) return EquipmentType.CHESTPLATE;
+        if (stack.isIn(ItemTags.HEAD_ARMOR)) return EquipmentType.HELMET;
+
+        // Fallback to slot id if tags ever fail.
+        return switch (getItemSlotId(stack)) {
+            case 0 -> EquipmentType.BOOTS;
+            case 1 -> EquipmentType.LEGGINGS;
+            case 2 -> EquipmentType.CHESTPLATE;
+            case 3 -> EquipmentType.HELMET;
+            default -> EquipmentType.BODY;
+        };
+    }
+
+    private ArmorMaterial getArmorMaterial(ItemStack armor) {
+        // Keep your existing explicit mapping by item (works regardless of ArmorItem class existing).
         switch (getItemSlotId(armor)) {
             case 0 -> {
                 if (armor.isOf(Items.LEATHER_BOOTS)) return net.minecraft.item.equipment.ArmorMaterials.LEATHER;
@@ -274,7 +310,7 @@ public class AutoSmith extends Module {
                 if (armor.isOf(Items.GOLDEN_BOOTS)) return net.minecraft.item.equipment.ArmorMaterials.GOLD;
                 if (armor.isOf(Items.DIAMOND_BOOTS)) return net.minecraft.item.equipment.ArmorMaterials.DIAMOND;
                 if (armor.isOf(Items.NETHERITE_BOOTS)) return net.minecraft.item.equipment.ArmorMaterials.NETHERITE;
-                else return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
+                return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
             }
             case 1 -> {
                 if (armor.isOf(Items.LEATHER_LEGGINGS)) return net.minecraft.item.equipment.ArmorMaterials.LEATHER;
@@ -283,7 +319,7 @@ public class AutoSmith extends Module {
                 if (armor.isOf(Items.GOLDEN_LEGGINGS)) return net.minecraft.item.equipment.ArmorMaterials.GOLD;
                 if (armor.isOf(Items.DIAMOND_LEGGINGS)) return net.minecraft.item.equipment.ArmorMaterials.DIAMOND;
                 if (armor.isOf(Items.NETHERITE_LEGGINGS)) return net.minecraft.item.equipment.ArmorMaterials.NETHERITE;
-                else return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
+                return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
             }
             case 2 -> {
                 if (armor.isOf(Items.LEATHER_CHESTPLATE)) return net.minecraft.item.equipment.ArmorMaterials.LEATHER;
@@ -292,7 +328,7 @@ public class AutoSmith extends Module {
                 if (armor.isOf(Items.GOLDEN_CHESTPLATE)) return net.minecraft.item.equipment.ArmorMaterials.GOLD;
                 if (armor.isOf(Items.DIAMOND_CHESTPLATE)) return net.minecraft.item.equipment.ArmorMaterials.DIAMOND;
                 if (armor.isOf(Items.NETHERITE_CHESTPLATE)) return net.minecraft.item.equipment.ArmorMaterials.NETHERITE;
-                else return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
+                return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
             }
             case 3 -> {
                 if (armor.isOf(Items.LEATHER_HELMET)) return net.minecraft.item.equipment.ArmorMaterials.LEATHER;
@@ -302,26 +338,12 @@ public class AutoSmith extends Module {
                 if (armor.isOf(Items.DIAMOND_HELMET)) return net.minecraft.item.equipment.ArmorMaterials.DIAMOND;
                 if (armor.isOf(Items.NETHERITE_HELMET)) return net.minecraft.item.equipment.ArmorMaterials.NETHERITE;
                 if (armor.isOf(Items.TURTLE_HELMET)) return net.minecraft.item.equipment.ArmorMaterials.TURTLE_SCUTE;
-                else return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
+                return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
             }
             default -> {
                 return net.minecraft.item.equipment.ArmorMaterials.ARMADILLO_SCUTE;
             }
         }
-    }
-
-    private EquipmentType getEquipmentType(ArmorItem armor) {
-        return switch (getItemSlotId(armor.getDefaultStack())) {
-            case 0 -> EquipmentType.BOOTS;
-            case 1 -> EquipmentType.LEGGINGS;
-            case 2 -> EquipmentType.CHESTPLATE;
-            case 3 -> EquipmentType.HELMET;
-            default -> EquipmentType.BODY;
-        };
-    }
-
-    private int getItemSlotId(ItemStack itemStack) {
-        return itemStack.get(DataComponentTypes.EQUIPPABLE).slot().getEntitySlotId();
     }
 
     private boolean isValidEquipmentForUpgrading(ItemStack stack) {
@@ -331,54 +353,50 @@ public class AutoSmith extends Module {
     }
 
     private boolean isValidEquipmentForTrimming(ItemStack stack) {
-        if (stack.getItem() instanceof ArmorItem armor) {
-            boolean correctMaterial = false;
-            EquipmentType equipmentType = getEquipmentType(armor);
-            ArmorMaterial armorMaterial = getArmorMaterial(stack);
-            if (exhaustedArmorTypes.contains(equipmentType)) return false;
-            switch (getItemSlotId(stack)) {
-                case 0 -> correctMaterial = bootsType.get().materialEquals(armorMaterial);
-                case 3 -> correctMaterial = helmetType.get().materialEquals(armorMaterial);
-                case 1 -> correctMaterial = leggingsType.get().materialEquals(armorMaterial);
-                case 2 -> correctMaterial = chestplateType.get().materialEquals(armorMaterial);
-            }
+        if (!isArmorStack(stack)) return false;
 
-            if (!correctMaterial) return false;
-            if (stack.contains(DataComponentTypes.TRIM)) {
-                if (!overwriteTrims.get()) return false;
-                String pattern = stack.get(DataComponentTypes.TRIM).pattern().getIdAsString();
-                String material = stack.get(DataComponentTypes.TRIM).material().getIdAsString();
+        EquipmentType equipmentType = getEquipmentType(stack);
+        ArmorMaterial armorMaterial = getArmorMaterial(stack);
 
-                switch (equipmentType) {
-                    case BOOTS -> {
-                        if (!bootsTrim.get().label.equals(pattern) || !bootsTrimMaterial.get().label.equals(material)) {
-                            if (hasRequiredMaterialsForTrimming(equipmentType)) return true;
-                        }
-                    }
-                    case HELMET -> {
-                        if (!helmetTrim.get().label.equals(pattern) || !helmetTrimMaterial.get().label.equals(material)) {
-                            if (hasRequiredMaterialsForTrimming(equipmentType)) return true;
-                        }
-                    }
-                    case LEGGINGS -> {
-                        if (!leggingsTrim.get().label.equals(pattern) || !leggingsTrimMaterial.get().label.equals(material)) {
-                            if (hasRequiredMaterialsForTrimming(equipmentType)) return true;
-                        }
-                    }
-                    case CHESTPLATE -> {
-                        if (!chestplateTrim.get().label.equals(pattern) || !chestplateTrimMaterial.get().label.equals(material)) {
-                            if (hasRequiredMaterialsForTrimming(equipmentType)) return true;
-                        }
-                    }
-                }
-            } else return true;
+        if (exhaustedArmorTypes.contains(equipmentType)) return false;
+
+        boolean correctMaterial;
+        switch (getItemSlotId(stack)) {
+            case 0 -> correctMaterial = bootsType.get().materialEquals(armorMaterial);
+            case 3 -> correctMaterial = helmetType.get().materialEquals(armorMaterial);
+            case 1 -> correctMaterial = leggingsType.get().materialEquals(armorMaterial);
+            case 2 -> correctMaterial = chestplateType.get().materialEquals(armorMaterial);
+            default -> correctMaterial = false;
         }
-        return false;
+
+        if (!correctMaterial) return false;
+
+        if (stack.contains(DataComponentTypes.TRIM)) {
+            if (!overwriteTrims.get()) return false;
+
+            String pattern = stack.get(DataComponentTypes.TRIM).pattern().getIdAsString();
+            String material = stack.get(DataComponentTypes.TRIM).material().getIdAsString();
+
+            return switch (equipmentType) {
+                case BOOTS -> (!bootsTrim.get().label.equals(pattern) || !bootsTrimMaterial.get().label.equals(material))
+                    && hasRequiredMaterialsForTrimming(equipmentType);
+                case HELMET -> (!helmetTrim.get().label.equals(pattern) || !helmetTrimMaterial.get().label.equals(material))
+                    && hasRequiredMaterialsForTrimming(equipmentType);
+                case LEGGINGS -> (!leggingsTrim.get().label.equals(pattern) || !leggingsTrimMaterial.get().label.equals(material))
+                    && hasRequiredMaterialsForTrimming(equipmentType);
+                case CHESTPLATE -> (!chestplateTrim.get().label.equals(pattern) || !chestplateTrimMaterial.get().label.equals(material))
+                    && hasRequiredMaterialsForTrimming(equipmentType);
+                default -> false;
+            };
+        }
+
+        return true;
     }
 
     private boolean hasRequiredMaterialsForTrimming(EquipmentType type) {
         boolean hasTemplate = false;
         boolean hasMaterial = false;
+
         switch (type) {
             case BOOTS -> {
                 switch (bootsTrim.get()) {
@@ -390,8 +408,8 @@ public class AutoSmith extends Module {
                     case Tide -> hasTemplate = hasItem(Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Ward -> hasTemplate = hasItem(Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Wild -> hasTemplate = hasItem(Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE);
-                    case Bolt -> hasMaterial = hasItem(Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
-                    case Flow -> hasMaterial = hasItem(Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE);
+                    case Bolt -> hasTemplate = hasItem(Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
+                    case Flow -> hasTemplate = hasItem(Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Coast -> hasTemplate = hasItem(Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Snout -> hasTemplate = hasItem(Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Spire -> hasTemplate = hasItem(Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE);
@@ -414,7 +432,7 @@ public class AutoSmith extends Module {
                     case Redstone -> hasMaterial = hasItem(Items.REDSTONE);
                     case Netherite -> hasMaterial = hasItem(Items.NETHERITE_INGOT);
                 }
-                if (hasTemplate && hasMaterial) return true;
+                return hasTemplate && hasMaterial;
             }
             case HELMET -> {
                 switch (helmetTrim.get()) {
@@ -426,8 +444,8 @@ public class AutoSmith extends Module {
                     case Tide -> hasTemplate = hasItem(Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Ward -> hasTemplate = hasItem(Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Wild -> hasTemplate = hasItem(Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE);
-                    case Bolt -> hasMaterial = hasItem(Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
-                    case Flow -> hasMaterial = hasItem(Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE);
+                    case Bolt -> hasTemplate = hasItem(Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
+                    case Flow -> hasTemplate = hasItem(Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Coast -> hasTemplate = hasItem(Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Snout -> hasTemplate = hasItem(Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Spire -> hasTemplate = hasItem(Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE);
@@ -450,7 +468,7 @@ public class AutoSmith extends Module {
                     case Redstone -> hasMaterial = hasItem(Items.REDSTONE);
                     case Netherite -> hasMaterial = hasItem(Items.NETHERITE_INGOT);
                 }
-                if (hasTemplate && hasMaterial) return true;
+                return hasTemplate && hasMaterial;
             }
             case LEGGINGS -> {
                 switch (leggingsTrim.get()) {
@@ -462,8 +480,8 @@ public class AutoSmith extends Module {
                     case Tide -> hasTemplate = hasItem(Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Ward -> hasTemplate = hasItem(Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Wild -> hasTemplate = hasItem(Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE);
-                    case Bolt -> hasMaterial = hasItem(Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
-                    case Flow -> hasMaterial = hasItem(Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE);
+                    case Bolt -> hasTemplate = hasItem(Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
+                    case Flow -> hasTemplate = hasItem(Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Coast -> hasTemplate = hasItem(Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Snout -> hasTemplate = hasItem(Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Spire -> hasTemplate = hasItem(Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE);
@@ -486,7 +504,7 @@ public class AutoSmith extends Module {
                     case Redstone -> hasMaterial = hasItem(Items.REDSTONE);
                     case Netherite -> hasMaterial = hasItem(Items.NETHERITE_INGOT);
                 }
-                if (hasTemplate && hasMaterial) return true;
+                return hasTemplate && hasMaterial;
             }
             case CHESTPLATE -> {
                 switch (chestplateTrim.get()) {
@@ -498,8 +516,8 @@ public class AutoSmith extends Module {
                     case Tide -> hasTemplate = hasItem(Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Ward -> hasTemplate = hasItem(Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Wild -> hasTemplate = hasItem(Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE);
-                    case Bolt -> hasMaterial = hasItem(Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
-                    case Flow -> hasMaterial = hasItem(Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE);
+                    case Bolt -> hasTemplate = hasItem(Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE);
+                    case Flow -> hasTemplate = hasItem(Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Coast -> hasTemplate = hasItem(Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Snout -> hasTemplate = hasItem(Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE);
                     case Spire -> hasTemplate = hasItem(Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE);
@@ -522,18 +540,19 @@ public class AutoSmith extends Module {
                     case Redstone -> hasMaterial = hasItem(Items.REDSTONE);
                     case Netherite -> hasMaterial = hasItem(Items.NETHERITE_INGOT);
                 }
-                if (hasTemplate && hasMaterial) return true;
+                return hasTemplate && hasMaterial;
+            }
+            default -> {
+                return false;
             }
         }
-
-        return false;
     }
 
     private boolean hasItem(Item needed) {
         if (mc.player == null) return false;
         if (!(mc.player.currentScreenHandler instanceof SmithingScreenHandler ss)) return false;
 
-        for (int n = 4; n < mc.player.getInventory().main.size() + 4; n++) {
+        for (int n = 4; n < mc.player.getInventory().size() + 4; n++) {
             ItemStack stack = ss.getSlot(n).getStack();
             if (stack.getItem() == needed) return true;
         }
@@ -559,420 +578,433 @@ public class AutoSmith extends Module {
         if (!(mc.player.currentScreenHandler instanceof SmithingScreenHandler ss)) return;
 
         ++timer;
-        if (timer >= tickRate.get()) {
-            timer = 0;
-            if (resettingTemplates) {
-                InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
-                timer = tickRate.get() - 1;
-                resettingTemplates = false;
-                return;
-            } else if (resettingMaterials) {
-                InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
-                timer = tickRate.get() - 1;
-                resettingMaterials = false;
-                return;
-            }
-            switch (modeSetting.get()) {
-                case Trim -> {
-                    ItemStack output = ss.getSlot(SmithingScreenHandler.OUTPUT_ID).getStack();
+        if (timer < tickRate.get()) return;
+        timer = 0;
 
-                    if (!output.isEmpty()) {
-                        if (!(output.getItem() instanceof ArmorItem armor)) return;
-                        EquipmentType armorType = getEquipmentType(armor);
-                        if (output.contains(DataComponentTypes.TRIM)) {
-                            ArmorTrim trimData = output.get(DataComponentTypes.TRIM);
-                            String pattern = trimData.pattern().getIdAsString();
-                            String material = trimData.material().getIdAsString();
-                            switch (armorType) {
-                                case BOOTS -> {
-                                    if (!bootsTrim.get().label.equals(pattern)) {
-                                        foundTemplates = false;
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
-                                    } else if (!bootsTrimMaterial.get().label.equals(material)) {
-                                        foundIngots = false;
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
-                                    } else {
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
+        if (resettingTemplates) {
+            InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
+            timer = tickRate.get() - 1;
+            resettingTemplates = false;
+            return;
+        } else if (resettingMaterials) {
+            InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
+            timer = tickRate.get() - 1;
+            resettingMaterials = false;
+            return;
+        }
 
-                                        foundEquip = false;
-                                        foundIngots = false;
-                                        foundTemplates = false;
-                                        if (ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount() >= 1) resettingTemplates = true;
-                                        if (ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount() >= 1) resettingMaterials = true;
-                                    }
-                                }
-                                case HELMET -> {
-                                    if (!helmetTrim.get().label.equals(pattern)) {
-                                        foundTemplates = false;
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
-                                    } else if (!helmetTrimMaterial.get().label.equals(material)) {
-                                        foundIngots = false;
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
-                                    } else {
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
+        switch (modeSetting.get()) {
+            case Trim -> {
+                ItemStack output = ss.getSlot(SmithingScreenHandler.OUTPUT_ID).getStack();
 
-                                        foundEquip = false;
-                                        foundIngots = false;
-                                        foundTemplates = false;
-                                        if (ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount() >= 1) resettingTemplates = true;
-                                        if (ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount() >= 1) resettingMaterials = true;
-                                    }
-                                }
-                                case LEGGINGS -> {
-                                    if (!leggingsTrim.get().label.equals(pattern)) {
-                                        foundTemplates = false;
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
-                                    } else if (!leggingsTrimMaterial.get().label.equals(material)) {
-                                        foundIngots = false;
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
-                                    } else {
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
+                if (!output.isEmpty()) {
+                    if (!isArmorStack(output)) return;
 
-                                        foundEquip = false;
-                                        foundIngots = false;
-                                        foundTemplates = false;
-                                        if (ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount() >= 1) resettingTemplates = true;
-                                        if (ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount() >= 1) resettingMaterials = true;
-                                    }
-                                }
-                                case CHESTPLATE -> {
-                                    if (!chestplateTrim.get().label.equals(pattern)) {
-                                        foundTemplates = false;
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
-                                    } else if (!chestplateTrimMaterial.get().label.equals(material)) {
-                                        foundIngots = false;
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
-                                    } else {
-                                        InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
+                    EquipmentType armorType = getEquipmentType(output);
 
-                                        foundEquip = false;
-                                        foundIngots = false;
-                                        foundTemplates = false;
-                                        if (ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount() >= 1) resettingTemplates = true;
-                                        if (ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount() >= 1) resettingMaterials = true;
-                                    }
-                                }
-                            }
-                        } else {
-                            foundEquip = false;
-                            InvUtils.shiftClick().slotId(SmithingScreenHandler.EQUIPMENT_ID);
+                    if (output.contains(DataComponentTypes.TRIM)) {
+                        ArmorTrim trimData = output.get(DataComponentTypes.TRIM);
+                        String pattern = trimData.pattern().getIdAsString();
+                        String material = trimData.material().getIdAsString();
 
-                            foundIngots = false;
-                            foundTemplates = false;
-                            resettingTemplates = true;
-                            resettingMaterials = false;
-                        }
-                    } else if (!foundEquip) {
-                        for (int n = 4; n < mc.player.getInventory().main.size() + 4; n++) {
-                            ItemStack stack = ss.getSlot(n).getStack();
-                            if (isValidEquipmentForTrimming(stack)) {
-                                foundEquip = true;
-                                InvUtils.shiftClick().slotId(n);
-                                break;
-                            }
-                        }
-                        if (!foundEquip && !notified) {
-                            notified = true;
-                            if (disableOnDone.get()) toggle();
-                            if (closeOnDone.get()) mc.player.closeHandledScreen();
-                            if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
-                            MsgUtil.sendModuleMsg("§2§oNo armor left to trim§8§o.", this.name);
-                        }
-                    } else if (!foundIngots) {
-                        Item neededMaterial = null;
-                        ItemStack armorToTrim = ss.getSlot(SmithingScreenHandler.EQUIPMENT_ID).getStack();
-                        if (!(armorToTrim.getItem() instanceof ArmorItem armor)) {
-                            foundEquip = false;
-                            resettingTemplates = true;
-                            resettingMaterials = true;
-                            InvUtils.shiftClick().slotId(SmithingScreenHandler.EQUIPMENT_ID);
-                            Stardust.LOG.error("[AutoSmith] Item in equipment slot was not armor!");
-                            return;
-                        }
-                        EquipmentType armorType = getEquipmentType(armor);
                         switch (armorType) {
                             case BOOTS -> {
-                                switch (bootsTrimMaterial.get()) {
-                                    case Gold -> neededMaterial = Items.GOLD_INGOT;
-                                    case Iron -> neededMaterial = Items.IRON_INGOT;
-                                    case Lapis -> neededMaterial = Items.LAPIS_LAZULI;
-                                    case Resin -> neededMaterial = Items.RESIN_BRICK;
-                                    case Copper -> neededMaterial = Items.COPPER_INGOT;
-                                    case Quartz -> neededMaterial = Items.QUARTZ;
-                                    case Diamond -> neededMaterial = Items.DIAMOND;
-                                    case Emerald -> neededMaterial = Items.EMERALD;
-                                    case Amethyst -> neededMaterial = Items.AMETHYST_SHARD;
-                                    case Redstone -> neededMaterial = Items.REDSTONE;
-                                    case Netherite -> neededMaterial = Items.NETHERITE_INGOT;
+                                if (!bootsTrim.get().label.equals(pattern)) {
+                                    foundTemplates = false;
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
+                                } else if (!bootsTrimMaterial.get().label.equals(material)) {
+                                    foundIngots = false;
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
+                                } else {
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
+                                    foundEquip = false;
+                                    foundIngots = false;
+                                    foundTemplates = false;
+                                    if (ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount() >= 1) resettingTemplates = true;
+                                    if (ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount() >= 1) resettingMaterials = true;
                                 }
                             }
                             case HELMET -> {
-                                switch (helmetTrimMaterial.get()) {
-                                    case Gold -> neededMaterial = Items.GOLD_INGOT;
-                                    case Iron -> neededMaterial = Items.IRON_INGOT;
-                                    case Lapis -> neededMaterial = Items.LAPIS_LAZULI;
-                                    case Resin -> neededMaterial = Items.RESIN_BRICK;
-                                    case Copper -> neededMaterial = Items.COPPER_INGOT;
-                                    case Quartz -> neededMaterial = Items.QUARTZ;
-                                    case Diamond -> neededMaterial = Items.DIAMOND;
-                                    case Emerald -> neededMaterial = Items.EMERALD;
-                                    case Amethyst -> neededMaterial = Items.AMETHYST_SHARD;
-                                    case Redstone -> neededMaterial = Items.REDSTONE;
-                                    case Netherite -> neededMaterial = Items.NETHERITE_INGOT;
+                                if (!helmetTrim.get().label.equals(pattern)) {
+                                    foundTemplates = false;
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
+                                } else if (!helmetTrimMaterial.get().label.equals(material)) {
+                                    foundIngots = false;
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
+                                } else {
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
+                                    foundEquip = false;
+                                    foundIngots = false;
+                                    foundTemplates = false;
+                                    if (ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount() >= 1) resettingTemplates = true;
+                                    if (ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount() >= 1) resettingMaterials = true;
                                 }
                             }
                             case LEGGINGS -> {
-                                switch (leggingsTrimMaterial.get()) {
-                                    case Gold -> neededMaterial = Items.GOLD_INGOT;
-                                    case Iron -> neededMaterial = Items.IRON_INGOT;
-                                    case Lapis -> neededMaterial = Items.LAPIS_LAZULI;
-                                    case Resin -> neededMaterial = Items.RESIN_BRICK;
-                                    case Copper -> neededMaterial = Items.COPPER_INGOT;
-                                    case Quartz -> neededMaterial = Items.QUARTZ;
-                                    case Diamond -> neededMaterial = Items.DIAMOND;
-                                    case Emerald -> neededMaterial = Items.EMERALD;
-                                    case Amethyst -> neededMaterial = Items.AMETHYST_SHARD;
-                                    case Redstone -> neededMaterial = Items.REDSTONE;
-                                    case Netherite -> neededMaterial = Items.NETHERITE_INGOT;
+                                if (!leggingsTrim.get().label.equals(pattern)) {
+                                    foundTemplates = false;
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
+                                } else if (!leggingsTrimMaterial.get().label.equals(material)) {
+                                    foundIngots = false;
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
+                                } else {
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
+                                    foundEquip = false;
+                                    foundIngots = false;
+                                    foundTemplates = false;
+                                    if (ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount() >= 1) resettingTemplates = true;
+                                    if (ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount() >= 1) resettingMaterials = true;
                                 }
                             }
                             case CHESTPLATE -> {
-                                switch (chestplateTrimMaterial.get()) {
-                                    case Gold -> neededMaterial = Items.GOLD_INGOT;
-                                    case Iron -> neededMaterial = Items.IRON_INGOT;
-                                    case Lapis -> neededMaterial = Items.LAPIS_LAZULI;
-                                    case Resin -> neededMaterial = Items.RESIN_BRICK;
-                                    case Copper -> neededMaterial = Items.COPPER_INGOT;
-                                    case Quartz -> neededMaterial = Items.QUARTZ;
-                                    case Diamond -> neededMaterial = Items.DIAMOND;
-                                    case Emerald -> neededMaterial = Items.EMERALD;
-                                    case Amethyst -> neededMaterial = Items.AMETHYST_SHARD;
-                                    case Redstone -> neededMaterial = Items.REDSTONE;
-                                    case Netherite -> neededMaterial = Items.NETHERITE_INGOT;
+                                if (!chestplateTrim.get().label.equals(pattern)) {
+                                    foundTemplates = false;
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.TEMPLATE_ID);
+                                } else if (!chestplateTrimMaterial.get().label.equals(material)) {
+                                    foundIngots = false;
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.MATERIAL_ID);
+                                } else {
+                                    InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
+                                    foundEquip = false;
+                                    foundIngots = false;
+                                    foundTemplates = false;
+                                    if (ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount() >= 1) resettingTemplates = true;
+                                    if (ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount() >= 1) resettingMaterials = true;
                                 }
                             }
-                        }
-
-                        if (neededMaterial == null) {
-                            Stardust.LOG.error("neededMaterial was somehow null!");
-                            return;
-                        }
-                        for (int n = 4; n < mc.player.getInventory().main.size() + 4; n++) {
-                            ItemStack stack = ss.getSlot(n).getStack();
-                            if (stack.isOf(neededMaterial)) {
-                                foundIngots = true;
-                                InvUtils.shiftClick().slotId(n);
-                                break;
-                            }
-                        }
-                        if (!foundIngots && !notified) {
-                            if (!exhaustedArmorTypes.contains(armorType)) {
-                                exhaustedArmorTypes.add(armorType);
-                                return;
-                            }
-                            notified = true;
-                            if (disableOnDone.get()) toggle();
-                            if (closeOnDone.get()) mc.player.closeHandledScreen();
-                            if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
-                            MsgUtil.sendModuleMsg("§c§oNo valid trim materials left to use§8§o..!", this.name);
-                        }
-                    } else if (!foundTemplates) {
-                        Item neededPattern = null;
-                        ItemStack armorToTrim = ss.getSlot(SmithingScreenHandler.EQUIPMENT_ID).getStack();
-                        if (!(armorToTrim.getItem() instanceof ArmorItem armor)) {
-                            foundEquip = false;
-                            resettingTemplates = true;
-                            resettingMaterials = true;
-                            InvUtils.shiftClick().slotId(SmithingScreenHandler.EQUIPMENT_ID);
-                            Stardust.LOG.error("[AutoSmith] Item in equipment slot was not armor!");
-                            return;
-                        }
-                        EquipmentType armorType = getEquipmentType(armor);
-                        switch (armorType) {
-                            case BOOTS -> {
-                                switch (bootsTrim.get()) {
-                                    case Eye -> neededPattern = Items.EYE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Rib -> neededPattern = Items.RIB_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Vex -> neededPattern = Items.VEX_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Dune -> neededPattern = Items.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Host -> neededPattern = Items.HOST_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Tide -> neededPattern = Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Ward -> neededPattern = Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Wild -> neededPattern = Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Bolt -> neededPattern = Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Flow -> neededPattern = Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Coast -> neededPattern = Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Snout -> neededPattern = Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Spire -> neededPattern = Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Raiser -> neededPattern = Items.RAISER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Sentry -> neededPattern = Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Shaper -> neededPattern = Items.SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Silence -> neededPattern = Items.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Wayfinder -> neededPattern = Items.WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                }
-                            }
-                            case HELMET -> {
-                                switch (helmetTrim.get()) {
-                                    case Eye -> neededPattern = Items.EYE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Rib -> neededPattern = Items.RIB_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Vex -> neededPattern = Items.VEX_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Dune -> neededPattern = Items.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Host -> neededPattern = Items.HOST_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Tide -> neededPattern = Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Ward -> neededPattern = Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Wild -> neededPattern = Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Bolt -> neededPattern = Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Flow -> neededPattern = Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Coast -> neededPattern = Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Snout -> neededPattern = Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Spire -> neededPattern = Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Raiser -> neededPattern = Items.RAISER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Sentry -> neededPattern = Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Shaper -> neededPattern = Items.SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Silence -> neededPattern = Items.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Wayfinder -> neededPattern = Items.WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                }
-                            }
-                            case LEGGINGS -> {
-                                switch (leggingsTrim.get()) {
-                                    case Eye -> neededPattern = Items.EYE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Rib -> neededPattern = Items.RIB_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Vex -> neededPattern = Items.VEX_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Dune -> neededPattern = Items.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Host -> neededPattern = Items.HOST_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Tide -> neededPattern = Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Ward -> neededPattern = Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Wild -> neededPattern = Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Bolt -> neededPattern = Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Flow -> neededPattern = Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Coast -> neededPattern = Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Snout -> neededPattern = Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Spire -> neededPattern = Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Raiser -> neededPattern = Items.RAISER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Sentry -> neededPattern = Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Shaper -> neededPattern = Items.SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Silence -> neededPattern = Items.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Wayfinder -> neededPattern = Items.WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                }
-                            }
-                            case CHESTPLATE -> {
-                                switch (chestplateTrim.get()) {
-                                    case Eye -> neededPattern = Items.EYE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Rib -> neededPattern = Items.RIB_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Vex -> neededPattern = Items.VEX_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Dune -> neededPattern = Items.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Host -> neededPattern = Items.HOST_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Tide -> neededPattern = Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Ward -> neededPattern = Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Wild -> neededPattern = Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Bolt -> neededPattern = Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Flow -> neededPattern = Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Coast -> neededPattern = Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Snout -> neededPattern = Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Spire -> neededPattern = Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Raiser -> neededPattern = Items.RAISER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Sentry -> neededPattern = Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Shaper -> neededPattern = Items.SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Silence -> neededPattern = Items.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                    case Wayfinder -> neededPattern = Items.WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE;
-                                }
-                            }
-                        }
-                        if (neededPattern == null) {
-                            Stardust.LOG.error("neededPattern was somehow null!");
-                            return;
-                        }
-                        for (int n = 4; n < mc.player.getInventory().main.size() + 4; n++) {
-                            ItemStack stack = ss.getSlot(n).getStack();
-                            if (stack.getItem() == neededPattern) {
-                                foundTemplates = true;
-                                InvUtils.shiftClick().slotId(n);
-                                break;
-                            }
-                        }
-                        if (!foundTemplates && !notified) {
-                            if (!exhaustedArmorTypes.contains(armorType)) {
-                                exhaustedArmorTypes.add(armorType);
-                                return;
-                            }
-                            notified = true;
-                            if (disableOnDone.get()) toggle();
-                            if (closeOnDone.get()) mc.player.closeHandledScreen();
-                            if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
-                            MsgUtil.sendModuleMsg("§c§oNo valid trim templates left to use§8§o..!", this.name);
+                            default -> { }
                         }
                     } else {
-                        timer = tickRate.get() - 1;
-                    }
-                }
-                case Upgrade -> {
-                    ItemStack output = ss.getSlot(SmithingScreenHandler.OUTPUT_ID).getStack();
-                    if (!output.isEmpty()) {
-                        InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
-
                         foundEquip = false;
-                        int ingotsRemaining = ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount();
-                        int templatesRemaining = ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount();
+                        InvUtils.shiftClick().slotId(SmithingScreenHandler.EQUIPMENT_ID);
 
-                        if (ingotsRemaining == 0) foundIngots = false;
-                        if (templatesRemaining == 0) foundTemplates = false;
-                    } else if (!foundEquip) {
-                        for (int n = 4; n < mc.player.getInventory().main.size() + 4; n++) {
-                            ItemStack stack = ss.getSlot(n).getStack();
-                            if (isValidEquipmentForUpgrading(stack)) {
-                                foundEquip = true;
-                                InvUtils.shiftClick().slotId(n);
-                                break;
-                            }
-                        }
-                        if (!foundEquip && !notified) {
-                            notified = true;
-                            if (disableOnDone.get()) toggle();
-                            if (closeOnDone.get()) mc.player.closeHandledScreen();
-                            if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
-                            mc.player.sendMessage(
-                                Text.of("§8<§a§o✨§8> §2§oNo gear left to upgrade§8§o."), false
-                            );
-                        }
-                    }else if (!foundIngots) {
-                        for (int n = 4; n < mc.player.getInventory().main.size() + 4; n++) {
-                            ItemStack stack = ss.getSlot(n).getStack();
-                            if (stack.getItem() == Items.NETHERITE_INGOT) {
-                                foundIngots = true;
-                                InvUtils.shiftClick().slotId(n);
-                                break;
-                            }
-                        }
-                        if (!foundIngots && !notified) {
-                            notified = true;
-                            if (disableOnDone.get()) toggle();
-                            if (closeOnDone.get()) mc.player.closeHandledScreen();
-                            if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
-                            mc.player.sendMessage(
-                                Text.of("§8<§a§o✨§8> §c§oNo netherite ingots left to use§8§o!"), false
-                            );
-                        }
-                    } else if (!foundTemplates) {
-                        for (int n = 4; n < mc.player.getInventory().main.size() + 4; n++) {
-                            ItemStack stack = ss.getSlot(n).getStack();
-                            if (stack.getItem() == Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE) {
-                                foundTemplates = true;
-                                InvUtils.shiftClick().slotId(n);
-                                break;
-                            }
-                        }
-                        if (!foundTemplates && !notified) {
-                            notified = true;
-                            if (disableOnDone.get()) toggle();
-                            if (closeOnDone.get()) mc.player.closeHandledScreen();
-                            if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
-                            mc.player.sendMessage(
-                                Text.of("§8<§a§o✨§8> §c§oNo netherite smithing templates left to use§8§o!"), false
-                            );
-                        }
-                    } else {
-                        timer = tickRate.get() - 1;
+                        foundIngots = false;
+                        foundTemplates = false;
+                        resettingTemplates = true;
+                        resettingMaterials = false;
                     }
+                } else if (!foundEquip) {
+                    for (int n = 4; n < mc.player.getInventory().size() + 4; n++) {
+                        ItemStack stack = ss.getSlot(n).getStack();
+                        if (isValidEquipmentForTrimming(stack)) {
+                            foundEquip = true;
+                            InvUtils.shiftClick().slotId(n);
+                            break;
+                        }
+                    }
+                    if (!foundEquip && !notified) {
+                        notified = true;
+                        if (disableOnDone.get()) toggle();
+                        if (closeOnDone.get()) mc.player.closeHandledScreen();
+                        if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
+                        MsgUtil.sendModuleMsg("§2§oNo armor left to trim§8§o.", this.name);
+                    }
+                } else if (!foundIngots) {
+                    Item neededMaterial = null;
+                    ItemStack armorToTrim = ss.getSlot(SmithingScreenHandler.EQUIPMENT_ID).getStack();
+
+                    if (!isArmorStack(armorToTrim)) {
+                        foundEquip = false;
+                        resettingTemplates = true;
+                        resettingMaterials = true;
+                        InvUtils.shiftClick().slotId(SmithingScreenHandler.EQUIPMENT_ID);
+                        Stardust.LOG.error("[AutoSmith] Item in equipment slot was not armor!");
+                        return;
+                    }
+
+                    EquipmentType armorType = getEquipmentType(armorToTrim);
+
+                    switch (armorType) {
+                        case BOOTS -> {
+                            switch (bootsTrimMaterial.get()) {
+                                case Gold -> neededMaterial = Items.GOLD_INGOT;
+                                case Iron -> neededMaterial = Items.IRON_INGOT;
+                                case Lapis -> neededMaterial = Items.LAPIS_LAZULI;
+                                case Resin -> neededMaterial = Items.RESIN_BRICK;
+                                case Copper -> neededMaterial = Items.COPPER_INGOT;
+                                case Quartz -> neededMaterial = Items.QUARTZ;
+                                case Diamond -> neededMaterial = Items.DIAMOND;
+                                case Emerald -> neededMaterial = Items.EMERALD;
+                                case Amethyst -> neededMaterial = Items.AMETHYST_SHARD;
+                                case Redstone -> neededMaterial = Items.REDSTONE;
+                                case Netherite -> neededMaterial = Items.NETHERITE_INGOT;
+                            }
+                        }
+                        case HELMET -> {
+                            switch (helmetTrimMaterial.get()) {
+                                case Gold -> neededMaterial = Items.GOLD_INGOT;
+                                case Iron -> neededMaterial = Items.IRON_INGOT;
+                                case Lapis -> neededMaterial = Items.LAPIS_LAZULI;
+                                case Resin -> neededMaterial = Items.RESIN_BRICK;
+                                case Copper -> neededMaterial = Items.COPPER_INGOT;
+                                case Quartz -> neededMaterial = Items.QUARTZ;
+                                case Diamond -> neededMaterial = Items.DIAMOND;
+                                case Emerald -> neededMaterial = Items.EMERALD;
+                                case Amethyst -> neededMaterial = Items.AMETHYST_SHARD;
+                                case Redstone -> neededMaterial = Items.REDSTONE;
+                                case Netherite -> neededMaterial = Items.NETHERITE_INGOT;
+                            }
+                        }
+                        case LEGGINGS -> {
+                            switch (leggingsTrimMaterial.get()) {
+                                case Gold -> neededMaterial = Items.GOLD_INGOT;
+                                case Iron -> neededMaterial = Items.IRON_INGOT;
+                                case Lapis -> neededMaterial = Items.LAPIS_LAZULI;
+                                case Resin -> neededMaterial = Items.RESIN_BRICK;
+                                case Copper -> neededMaterial = Items.COPPER_INGOT;
+                                case Quartz -> neededMaterial = Items.QUARTZ;
+                                case Diamond -> neededMaterial = Items.DIAMOND;
+                                case Emerald -> neededMaterial = Items.EMERALD;
+                                case Amethyst -> neededMaterial = Items.AMETHYST_SHARD;
+                                case Redstone -> neededMaterial = Items.REDSTONE;
+                                case Netherite -> neededMaterial = Items.NETHERITE_INGOT;
+                            }
+                        }
+                        case CHESTPLATE -> {
+                            switch (chestplateTrimMaterial.get()) {
+                                case Gold -> neededMaterial = Items.GOLD_INGOT;
+                                case Iron -> neededMaterial = Items.IRON_INGOT;
+                                case Lapis -> neededMaterial = Items.LAPIS_LAZULI;
+                                case Resin -> neededMaterial = Items.RESIN_BRICK;
+                                case Copper -> neededMaterial = Items.COPPER_INGOT;
+                                case Quartz -> neededMaterial = Items.QUARTZ;
+                                case Diamond -> neededMaterial = Items.DIAMOND;
+                                case Emerald -> neededMaterial = Items.EMERALD;
+                                case Amethyst -> neededMaterial = Items.AMETHYST_SHARD;
+                                case Redstone -> neededMaterial = Items.REDSTONE;
+                                case Netherite -> neededMaterial = Items.NETHERITE_INGOT;
+                            }
+                        }
+                        default -> { }
+                    }
+
+                    if (neededMaterial == null) {
+                        Stardust.LOG.error("neededMaterial was somehow null!");
+                        return;
+                    }
+
+                    for (int n = 4; n < mc.player.getInventory().size() + 4; n++) {
+                        ItemStack stack = ss.getSlot(n).getStack();
+                        if (stack.isOf(neededMaterial)) {
+                            foundIngots = true;
+                            InvUtils.shiftClick().slotId(n);
+                            break;
+                        }
+                    }
+
+                    if (!foundIngots && !notified) {
+                        if (!exhaustedArmorTypes.contains(armorType)) {
+                            exhaustedArmorTypes.add(armorType);
+                            return;
+                        }
+                        notified = true;
+                        if (disableOnDone.get()) toggle();
+                        if (closeOnDone.get()) mc.player.closeHandledScreen();
+                        if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
+                        MsgUtil.sendModuleMsg("§c§oNo valid trim materials left to use§8§o..!", this.name);
+                    }
+                } else if (!foundTemplates) {
+                    Item neededPattern = null;
+                    ItemStack armorToTrim = ss.getSlot(SmithingScreenHandler.EQUIPMENT_ID).getStack();
+
+                    if (!isArmorStack(armorToTrim)) {
+                        foundEquip = false;
+                        resettingTemplates = true;
+                        resettingMaterials = true;
+                        InvUtils.shiftClick().slotId(SmithingScreenHandler.EQUIPMENT_ID);
+                        Stardust.LOG.error("[AutoSmith] Item in equipment slot was not armor!");
+                        return;
+                    }
+
+                    EquipmentType armorType = getEquipmentType(armorToTrim);
+
+                    switch (armorType) {
+                        case BOOTS -> {
+                            switch (bootsTrim.get()) {
+                                case Eye -> neededPattern = Items.EYE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Rib -> neededPattern = Items.RIB_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Vex -> neededPattern = Items.VEX_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Dune -> neededPattern = Items.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Host -> neededPattern = Items.HOST_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Tide -> neededPattern = Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Ward -> neededPattern = Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Wild -> neededPattern = Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Bolt -> neededPattern = Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Flow -> neededPattern = Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Coast -> neededPattern = Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Snout -> neededPattern = Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Spire -> neededPattern = Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Raiser -> neededPattern = Items.RAISER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Sentry -> neededPattern = Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Shaper -> neededPattern = Items.SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Silence -> neededPattern = Items.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Wayfinder -> neededPattern = Items.WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                            }
+                        }
+                        case HELMET -> {
+                            switch (helmetTrim.get()) {
+                                case Eye -> neededPattern = Items.EYE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Rib -> neededPattern = Items.RIB_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Vex -> neededPattern = Items.VEX_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Dune -> neededPattern = Items.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Host -> neededPattern = Items.HOST_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Tide -> neededPattern = Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Ward -> neededPattern = Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Wild -> neededPattern = Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Bolt -> neededPattern = Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Flow -> neededPattern = Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Coast -> neededPattern = Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Snout -> neededPattern = Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Spire -> neededPattern = Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Raiser -> neededPattern = Items.RAISER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Sentry -> neededPattern = Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Shaper -> neededPattern = Items.SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Silence -> neededPattern = Items.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Wayfinder -> neededPattern = Items.WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                            }
+                        }
+                        case LEGGINGS -> {
+                            switch (leggingsTrim.get()) {
+                                case Eye -> neededPattern = Items.EYE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Rib -> neededPattern = Items.RIB_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Vex -> neededPattern = Items.VEX_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Dune -> neededPattern = Items.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Host -> neededPattern = Items.HOST_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Tide -> neededPattern = Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Ward -> neededPattern = Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Wild -> neededPattern = Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Bolt -> neededPattern = Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Flow -> neededPattern = Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Coast -> neededPattern = Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Snout -> neededPattern = Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Spire -> neededPattern = Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Raiser -> neededPattern = Items.RAISER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Sentry -> neededPattern = Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Shaper -> neededPattern = Items.SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Silence -> neededPattern = Items.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Wayfinder -> neededPattern = Items.WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                            }
+                        }
+                        case CHESTPLATE -> {
+                            switch (chestplateTrim.get()) {
+                                case Eye -> neededPattern = Items.EYE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Rib -> neededPattern = Items.RIB_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Vex -> neededPattern = Items.VEX_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Dune -> neededPattern = Items.DUNE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Host -> neededPattern = Items.HOST_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Tide -> neededPattern = Items.TIDE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Ward -> neededPattern = Items.WARD_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Wild -> neededPattern = Items.WILD_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Bolt -> neededPattern = Items.BOLT_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Flow -> neededPattern = Items.FLOW_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Coast -> neededPattern = Items.COAST_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Snout -> neededPattern = Items.SNOUT_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Spire -> neededPattern = Items.SPIRE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Raiser -> neededPattern = Items.RAISER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Sentry -> neededPattern = Items.SENTRY_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Shaper -> neededPattern = Items.SHAPER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Silence -> neededPattern = Items.SILENCE_ARMOR_TRIM_SMITHING_TEMPLATE;
+                                case Wayfinder -> neededPattern = Items.WAYFINDER_ARMOR_TRIM_SMITHING_TEMPLATE;
+                            }
+                        }
+                        default -> { }
+                    }
+
+                    if (neededPattern == null) {
+                        Stardust.LOG.error("neededPattern was somehow null!");
+                        return;
+                    }
+
+                    for (int n = 4; n < mc.player.getInventory().size() + 4; n++) {
+                        ItemStack stack = ss.getSlot(n).getStack();
+                        if (stack.getItem() == neededPattern) {
+                            foundTemplates = true;
+                            InvUtils.shiftClick().slotId(n);
+                            break;
+                        }
+                    }
+
+                    if (!foundTemplates && !notified) {
+                        if (!exhaustedArmorTypes.contains(armorType)) {
+                            exhaustedArmorTypes.add(armorType);
+                            return;
+                        }
+                        notified = true;
+                        if (disableOnDone.get()) toggle();
+                        if (closeOnDone.get()) mc.player.closeHandledScreen();
+                        if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
+                        MsgUtil.sendModuleMsg("§c§oNo valid trim templates left to use§8§o..!", this.name);
+                    }
+                } else {
+                    timer = tickRate.get() - 1;
+                }
+            }
+
+            case Upgrade -> {
+                ItemStack output = ss.getSlot(SmithingScreenHandler.OUTPUT_ID).getStack();
+
+                if (!output.isEmpty()) {
+                    InvUtils.shiftClick().slotId(SmithingScreenHandler.OUTPUT_ID);
+
+                    foundEquip = false;
+                    int ingotsRemaining = ss.getSlot(SmithingScreenHandler.MATERIAL_ID).getStack().getCount();
+                    int templatesRemaining = ss.getSlot(SmithingScreenHandler.TEMPLATE_ID).getStack().getCount();
+
+                    if (ingotsRemaining == 0) foundIngots = false;
+                    if (templatesRemaining == 0) foundTemplates = false;
+                } else if (!foundEquip) {
+                    for (int n = 4; n < mc.player.getInventory().size() + 4; n++) {
+                        ItemStack stack = ss.getSlot(n).getStack();
+                        if (isValidEquipmentForUpgrading(stack)) {
+                            foundEquip = true;
+                            InvUtils.shiftClick().slotId(n);
+                            break;
+                        }
+                    }
+
+                    if (!foundEquip && !notified) {
+                        notified = true;
+                        if (disableOnDone.get()) toggle();
+                        if (closeOnDone.get()) mc.player.closeHandledScreen();
+                        if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
+                        mc.player.sendMessage(Text.of("§8<§a§o✨§8> §2§oNo gear left to upgrade§8§o."), false);
+                    }
+                } else if (!foundIngots) {
+                    for (int n = 4; n < mc.player.getInventory().size() + 4; n++) {
+                        ItemStack stack = ss.getSlot(n).getStack();
+                        if (stack.getItem() == Items.NETHERITE_INGOT) {
+                            foundIngots = true;
+                            InvUtils.shiftClick().slotId(n);
+                            break;
+                        }
+                    }
+
+                    if (!foundIngots && !notified) {
+                        notified = true;
+                        if (disableOnDone.get()) toggle();
+                        if (closeOnDone.get()) mc.player.closeHandledScreen();
+                        if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
+                        mc.player.sendMessage(Text.of("§8<§a§o✨§8> §c§oNo netherite ingots left to use§8§o!"), false);
+                    }
+                } else if (!foundTemplates) {
+                    for (int n = 4; n < mc.player.getInventory().size() + 4; n++) {
+                        ItemStack stack = ss.getSlot(n).getStack();
+                        if (stack.getItem() == Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE) {
+                            foundTemplates = true;
+                            InvUtils.shiftClick().slotId(n);
+                            break;
+                        }
+                    }
+
+                    if (!foundTemplates && !notified) {
+                        notified = true;
+                        if (disableOnDone.get()) toggle();
+                        if (closeOnDone.get()) mc.player.closeHandledScreen();
+                        if (pingOnDone.get()) mc.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, pingVolume.get().floatValue(), 1f);
+                        mc.player.sendMessage(Text.of("§8<§a§o✨§8> §c§oNo netherite smithing templates left to use§8§o!"), false);
+                    }
+                } else {
+                    timer = tickRate.get() - 1;
                 }
             }
         }

@@ -1,5 +1,12 @@
 package dev.stardust.modules;
 
+import net.minecraft.item.AxeItem;
+import net.minecraft.item.ShovelItem;
+import net.minecraft.item.HoeItem;
+import net.minecraft.item.BowItem;
+import net.minecraft.item.CrossbowItem;
+import net.minecraft.item.TridentItem;
+import net.minecraft.item.ShieldItem;
 import java.util.*;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -208,7 +215,7 @@ public class PagePirate extends Module {
             return day+"st";
         } else if (!day.endsWith("12") && day.endsWith("2")) {
             return day+"nd";
-        }else if (!day.endsWith("13") && day.endsWith("3")) {
+        } else if (!day.endsWith("13") && day.endsWith("3")) {
             return day+"rd";
         } else {
             return day+"th";
@@ -218,47 +225,64 @@ public class PagePirate extends Module {
     private boolean bookAndQuillHasContent(ItemStack book) {
         if (book.getItem() != Items.WRITABLE_BOOK) return false;
         WritableBookContentComponent content = book.get(DataComponentTypes.WRITABLE_BOOK_CONTENT);
-        List<String> pages = content.pages().stream().map(page -> page.raw().trim()).toList();
+        if (content == null) return false;
 
+        List<String> pages = content.pages().stream().map(page -> page.raw().trim()).toList();
         return pages.stream().anyMatch(page -> !page.isBlank());
     }
 
-    private boolean equipBookAndQuill() {
-        FindItemResult result = InvUtils.find(stack -> {
-            if (stack.getItem() instanceof WritableBookItem) {
-                WritableBookContentComponent data = stack.get(DataComponentTypes.WRITABLE_BOOK_CONTENT);
-                List<String> pageList = data.pages().stream().map(RawFilteredPair::raw).toList();
-                return overwrite.get()
-                    || pageList.stream()
-                        .map(this::formatPageText)
-                        .map(this::decodeUnicodeChars)
-                        .allMatch(page -> page.replace("~pgprte~newline~", " ").trim().isEmpty());
-            }
-            return false;
-        });
-
-        if (result.found()) {
-            if (result.slot() < 9) {
-                InvUtils.swap(result.slot(), true);
-            } else {
-                FindItemResult emptySlot = InvUtils.findEmpty();
-                if (emptySlot.found() && emptySlot.slot() < 9) {
-                    InvUtils.move().from(result.slot()).to(emptySlot.slot());
-                    InvUtils.swap(emptySlot.slot(), true);
-                } else {
-                    FindItemResult nonCriticalSlot = InvUtils.find(stack -> !(stack.getItem() instanceof MiningToolItem) && !(stack.isIn(ItemTags.WEAPON_ENCHANTABLE)) && !stack.contains(DataComponentTypes.FOOD));
-                    if (nonCriticalSlot.found() && nonCriticalSlot.slot() < 9) {
-                        InvUtils.move().from(result.slot()).to(nonCriticalSlot.slot());
-                        InvUtils.swap(nonCriticalSlot.slot(), true);
-                    } else {
-                        InvUtils.move().from(result.slot()).to(mc.player.getInventory().selectedSlot);
-                    }
-                }
-            }
-            return true;
+private boolean equipBookAndQuill() {
+    FindItemResult result = InvUtils.find(stack -> {
+        if (stack.getItem() instanceof WritableBookItem) {
+            WritableBookContentComponent data = stack.get(DataComponentTypes.WRITABLE_BOOK_CONTENT);
+            List<String> pageList = data.pages().stream().map(RawFilteredPair::raw).toList();
+            return overwrite.get()
+                || pageList.stream()
+                    .map(this::formatPageText)
+                    .map(this::decodeUnicodeChars)
+                    .allMatch(page -> page.replace("~pgprte~newline~", " ").trim().isEmpty());
         }
         return false;
+    });
+
+    if (result.found()) {
+        if (result.slot() < 9) {
+            InvUtils.swap(result.slot(), true);
+        } else {
+            FindItemResult emptySlot = InvUtils.findEmpty();
+            if (emptySlot.found() && emptySlot.slot() < 9) {
+                InvUtils.move().from(result.slot()).to(emptySlot.slot());
+                InvUtils.swap(emptySlot.slot(), true);
+            } else {
+                FindItemResult nonCriticalSlot = InvUtils.find(stack -> {
+                    if (stack.isEmpty()) return false;
+
+                    // Don't move food
+                    if (stack.contains(DataComponentTypes.FOOD)) return false;
+
+                    // Don't move important/valuable items (tag-based, mapping-safe)
+                    if (stack.isIn(ItemTags.WEAPON_ENCHANTABLE)) return false;
+                    if (stack.isIn(ItemTags.ARMOR_ENCHANTABLE)) return false;
+                    if (stack.isIn(ItemTags.MINING_ENCHANTABLE)) return false;
+                    if (stack.isIn(ItemTags.DURABILITY_ENCHANTABLE)) return false;
+
+                    return true;
+                });
+
+                if (nonCriticalSlot.found() && nonCriticalSlot.slot() < 9) {
+                    InvUtils.move().from(result.slot()).to(nonCriticalSlot.slot());
+                    InvUtils.swap(nonCriticalSlot.slot(), true);
+                } else {
+                    InvUtils.move().from(result.slot()).to(mc.player.getInventory().getSelectedSlot());
+                }
+            }
+        }
+        return true;
     }
+
+    return false;
+}
+
 
     private boolean itemFrameHasBook(ItemFrameEntity itemFrame) {
         ItemStack stack = itemFrame.getHeldItemStack();
@@ -266,88 +290,88 @@ public class PagePirate extends Module {
     }
 
     private void handleWrittenBook(ItemStack book, String piratedFrom) {
-        if (book.contains(DataComponentTypes.WRITTEN_BOOK_CONTENT)) {
-            WrittenBookContentComponent metadata = book.get(DataComponentTypes.WRITTEN_BOOK_CONTENT);
+        if (!book.contains(DataComponentTypes.WRITTEN_BOOK_CONTENT)) return;
 
-            String author = metadata.author();
-            String title = metadata.title().raw();
-            List<String> pages = metadata.getPages(false).stream().map(Text::getString).toList();
+        WrittenBookContentComponent metadata = book.get(DataComponentTypes.WRITTEN_BOOK_CONTENT);
+        if (metadata == null) return;
 
-            String pageText = pages.stream()
-                .map(this::formatPageText)
-                .map(this::decodeUnicodeChars)
-                .collect(Collectors.joining("\n"));
+        String author = metadata.author();
+        String title = metadata.title().raw();
+        List<String> pages = metadata.getPages(false).stream().map(Text::getString).toList();
 
-            if (seenPages.contains(pageText.replace("~pgprte~newline~", "\n")) && seenBooks.containsKey(author) && seenBooks.get(author).contains(title)) return;
+        String pageText = pages.stream()
+            .map(this::formatPageText)
+            .map(this::decodeUnicodeChars)
+            .collect(Collectors.joining("\n"));
 
-            seenPages.add(pageText.replace("~pgprte~newline~", "\n"));
-            if (seenBooks.containsKey(author)) {
-                ArrayList<String> booksFromAuthor = seenBooks.get(author);
-                booksFromAuthor.add(title);
-                seenBooks.put(author, booksFromAuthor);
-            } else {
-                ArrayList<String> books = new ArrayList<>();
-                books.add(title);
-                seenBooks.put(author, books);
+        if (seenPages.contains(pageText.replace("~pgprte~newline~", "\n")) && seenBooks.containsKey(author) && seenBooks.get(author).contains(title)) return;
+
+        seenPages.add(pageText.replace("~pgprte~newline~", "\n"));
+        if (seenBooks.containsKey(author)) {
+            ArrayList<String> booksFromAuthor = seenBooks.get(author);
+            booksFromAuthor.add(title);
+            seenBooks.put(author, booksFromAuthor);
+        } else {
+            ArrayList<String> books = new ArrayList<>();
+            books.add(title);
+            seenBooks.put(author, books);
+        }
+
+        if (chatDisplay.get() && mc.player != null) {
+            if (deobfuscatePages.get()) pageText = pageText.replace("§k", "");
+
+            switch (piratedFrom) {
+                case "on ground" -> {
+                    if (displayBooksOnGround.get()) {
+                        mc.player.sendMessage(
+                            Text.literal(
+                                "§8[§a§oPagePirate§8] §7Author: "
+                                    +StardustUtil.rCC()+"§o"+author+" §7Title: "
+                                    +StardustUtil.rCC()+"§5§o"+title+" §7Pages: \n§o"+pageText.replace("~pgprte~newline~", "\n")
+                            ), false
+                        );
+                    }
+                }
+                case "item frame" -> {
+                    if (displayBooksInItemFrames.get()) {
+                        mc.player.sendMessage(
+                            Text.literal(
+                                "§8[§a§oPagePirate§8] §7Author: "
+                                    +StardustUtil.rCC()+"§o"+author+" §7Title: "
+                                    +StardustUtil.rCC()+"§5§o"+title+" §7Pages: \n§o"+pageText.replace("~pgprte~newline~", "\n")
+                            ), false
+                        );
+                    }
+                }
+                default -> mc.player.sendMessage(
+                    Text.literal(
+                        "§8[§a§oPagePirate§8] §7Author: "
+                            +StardustUtil.rCC()+"§o"+author+" §7Title: "
+                            +StardustUtil.rCC()+"§5§o"+title+" §7Pages: \n§o"+pageText.replace("~pgprte~newline~", "\n")
+                    ), false
+                );
             }
-            if (chatDisplay.get()) {
-                if (deobfuscatePages.get()) {
-                    pageText = pageText.replace("§k", "");
-                }
+        }
 
-                switch (piratedFrom) {
-                    case "on ground" -> {
-                        if (displayBooksOnGround.get()) {
-                            mc.player.sendMessage(
-                                Text.literal(
-                                    "§8[§a§oPagePirate§8] §7Author: "
-                                        +StardustUtil.rCC()+"§o"+author+" §7Title: "
-                                        +StardustUtil.rCC()+"§5§o"+title+" §7Pages: \n§o"+pageText.replace("~pgprte~newline~", "\n")
-                                ), false
-                            );
-                        }
-                    }
-                    case "item frame" -> {
-                        if (displayBooksInItemFrames.get()) {
-                            mc.player.sendMessage(
-                                Text.literal(
-                                    "§8[§a§oPagePirate§8] §7Author: "
-                                        +StardustUtil.rCC()+"§o"+author+" §7Title: "
-                                        +StardustUtil.rCC()+"§5§o"+title+" §7Pages: \n§o"+pageText.replace("~pgprte~newline~", "\n")
-                                ), false
-                            );
-                        }
-                    }
-                    default -> mc.player.sendMessage(
-                        Text.literal(
-                            "§8[§a§oPagePirate§8] §7Author: "
-                                +StardustUtil.rCC()+"§o"+author+" §7Title: "
-                                +StardustUtil.rCC()+"§5§o"+title+" §7Pages: \n§o"+pageText.replace("~pgprte~newline~", "\n")
-                        ), false
-                    );
+        if (localCopy.get()) {
+            switch (piratedFrom) {
+                case "on ground" -> {
+                    if (copyBooksOnGround.get()) jobQueue.addLast(new PirateTask(metadata, piratedFrom, pages));
                 }
-            }
-            if (localCopy.get()) {
-                switch (piratedFrom) {
-                    case "on ground" -> {
-                        if (copyBooksOnGround.get()) {
-                            jobQueue.addLast(new PirateTask(metadata, piratedFrom, pages));
-                        }
-                    }
-                    case "item frame" -> {
-                        if (copyBooksInItemFrames.get()) {
-                            jobQueue.addLast(new PirateTask(metadata, piratedFrom, pages));
-                        }
-                    }
-                    default -> jobQueue.addLast(new PirateTask(metadata, piratedFrom, pages));
+                case "item frame" -> {
+                    if (copyBooksInItemFrames.get()) jobQueue.addLast(new PirateTask(metadata, piratedFrom, pages));
                 }
+                default -> jobQueue.addLast(new PirateTask(metadata, piratedFrom, pages));
             }
         }
     }
 
     private void handleBookAndQuill(ItemStack book, String piratedFrom) {
         if (!book.contains(DataComponentTypes.WRITABLE_BOOK_CONTENT)) return;
+
         WritableBookContentComponent metadata = book.get(DataComponentTypes.WRITABLE_BOOK_CONTENT);
+        if (metadata == null) return;
+
         List<String> pages = metadata.pages().stream().map(p -> p.get(false)).toList();
 
         String pageText = pages.stream()
@@ -358,10 +382,8 @@ public class PagePirate extends Module {
         if (seenPages.contains(pageText.replace("~pgprte~newline~", "\n"))) return;
 
         seenPages.add(pageText.replace("~pgprte~newline~", "\n"));
-        if (chatDisplay.get() && !pageText.replace("~pgprte~newline~", " ").isBlank()) {
-            if (deobfuscatePages.get()) {
-                pageText = pageText.replace("§k", "");
-            }
+        if (chatDisplay.get() && mc.player != null && !pageText.replace("~pgprte~newline~", " ").isBlank()) {
+            if (deobfuscatePages.get()) pageText = pageText.replace("§k", "");
 
             switch (piratedFrom) {
                 case "on ground" -> {
@@ -378,24 +400,23 @@ public class PagePirate extends Module {
                         );
                     }
                 }
-                default -> mc.player.sendMessage(Text.literal("§8[§a§oPagePirate§8] §7Unsigned Contents from §a§o"+ piratedFrom+"§7: \n§7§o"+pageText.replace("~pgprte~newline~", "\n")), false);
+                default -> mc.player.sendMessage(
+                    Text.literal("§8[§a§oPagePirate§8] §7Unsigned Contents from §a§o"+ piratedFrom+"§7: \n§7§o"+pageText.replace("~pgprte~newline~", "\n")),
+                    false
+                );
             }
         }
+
         if (localCopy.get()) {
             switch (piratedFrom) {
                 case "on ground" -> {
-                    if (copyBooksOnGround.get()) {
-                        jobQueue.addLast(new PirateTask(null, piratedFrom, pages));
-                    }
+                    if (copyBooksOnGround.get()) jobQueue.addLast(new PirateTask(null, piratedFrom, pages));
                 }
                 case "item frame" -> {
-                    if (copyBooksInItemFrames.get()) {
-                        jobQueue.addLast(new PirateTask(null, piratedFrom, pages));
-                    }
+                    if (copyBooksInItemFrames.get()) jobQueue.addLast(new PirateTask(null, piratedFrom, pages));
                 }
                 default -> jobQueue.addLast(new PirateTask(null, piratedFrom, pages));
             }
-
         }
     }
 
@@ -405,6 +426,8 @@ public class PagePirate extends Module {
             .map(this::decodeUnicodeChars)
             .toList());
         if (filtered.isEmpty()) return;
+
+        if (mc.player == null) return;
 
         if (!equipBookAndQuill()) {
             mc.player.sendMessage(Text.literal("§8[§4§oPagePirate§8] §7Failed to copy nearby book because you have no empty Book & Quills§4..!"), false);
@@ -417,17 +440,9 @@ public class PagePirate extends Module {
             LocalDate currentDate = LocalDate.now();
             LocalTime currentTime = LocalTime.now();
 
-            String paddedMinute, paddedHour;
-            if (currentTime.getMinute() < 10) {
-                paddedMinute = "0"+currentTime.getMinute();
-            } else {
-                paddedMinute = String.valueOf(currentTime.getMinute());
-            }
-            if (currentTime.getHour() < 10) {
-                paddedHour = "0"+currentTime.getHour();
-            } else {
-                paddedHour = String.valueOf(currentTime.getHour());
-            }
+            String paddedMinute = currentTime.getMinute() < 10 ? "0"+currentTime.getMinute() : String.valueOf(currentTime.getMinute());
+            String paddedHour = currentTime.getHour() < 10 ? "0"+currentTime.getHour() : String.valueOf(currentTime.getHour());
+
             String coverPage = "   "+rcc+"§o✨ PagePirate ✨ \n\n§0§lTitle: "+rcc+"§o" +
                 metadata.title().raw() + "\n§0§lAuthor: "+rcc+"§o" + metadata.author() +
                 "\n\n" + "§0§lPirated From: "+rcc+"§o" + piratedFrom + "\n§0§oat "+rcc+"§o" +
@@ -439,9 +454,11 @@ public class PagePirate extends Module {
             piratedPages.add(coverPage);
         }
 
-        int slot = mc.player.getInventory().selectedSlot;
+        int slot = mc.player.getInventory().getSelectedSlot();
         boolean shouldSign = finalizeCopy.get() && metadata != null;
+
         mc.player.sendMessage(Text.literal("§8[§a§oPagePirate§8] §7Successfully copied nearby book!"), false);
+
         piratedPages.addAll(filtered.stream().map(page -> page.replace("~pgprte~newline~", "\n")).toList());
         mc.getNetworkHandler().sendPacket(new BookUpdateC2SPacket(slot, piratedPages, shouldSign ? Optional.of(metadata.title().raw()) : Optional.empty()));
     }
@@ -458,7 +475,8 @@ public class PagePirate extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        if (!Utils.canUpdate()) return;
+        if (!Utils.canUpdate() || mc.world == null || mc.player == null) return;
+
         booksInItemFrames.removeIf(frame -> !itemFrameHasBook(frame));
         booksOnGround.removeIf(book -> book.isRemoved() || book.isRegionUnloaded());
         booksInItemFrames.removeIf(frame -> frame.isRemoved() || frame.isRegionUnloaded());
@@ -472,7 +490,7 @@ public class PagePirate extends Module {
 
                 ItemStack offHand = player.getStackInHand(Hand.OFF_HAND);
                 if (offHand.getItem() == Items.WRITTEN_BOOK) handleWrittenBook(offHand, name);
-                else if (mainHand.getItem() == Items.WRITABLE_BOOK) handleBookAndQuill(offHand, name);
+                else if (offHand.getItem() == Items.WRITABLE_BOOK) handleBookAndQuill(offHand, name); // FIXED (was mainHand)
             } else if (entity instanceof ItemEntity item) {
                 if (booksOnGround.contains(item)) continue;
                 String piratedFrom = "on ground";

@@ -28,7 +28,9 @@ import java.nio.file.StandardOpenOption;
 import org.jetbrains.annotations.NotNull;
 import net.minecraft.util.math.Direction;
 import net.minecraft.nbt.StringNbtReader;
+import net.minecraft.world.chunk.Chunk;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.RaycastContext;
 import net.minecraft.util.math.MathHelper;
 import com.mojang.serialization.DataResult;
@@ -337,9 +339,23 @@ public class SignHistorian extends Module {
                 try {
                     String[] parts = sign.split(" -\\|- ");
                     if (parts.length != 2) continue;
-                    NbtCompound reconstructed = StringNbtReader.parse(parts[0].trim());
-                    NbtCompound stateReconstructed = StringNbtReader.parse(parts[1].trim());
-                    BlockPos bPos = BlockEntity.posFromNbt(reconstructed);
+                    NbtCompound reconstructed;
+                    NbtCompound stateReconstructed;
+
+                    try {
+                        // Newer mappings: StringNbtReader.readCompound(String)
+                        reconstructed = StringNbtReader.readCompound(parts[0].trim());
+                        stateReconstructed = StringNbtReader.readCompound(parts[1].trim());
+                    } catch (Exception e) {
+                        Stardust.LOG.error("Failed to parse NBT in SignHistorian: " + e);
+                        return;
+                    }
+
+                    // BlockEntity.posFromNbt now needs (ChunkPos, NbtCompound).
+                    // We usually don't have a ChunkPos here, but ChunkPos.ORIGIN works fine
+                    // because the NBT contains absolute x/y/z anyway on modern versions.
+                    BlockPos bPos = BlockEntity.posFromNbt(ChunkPos.ORIGIN, reconstructed);
+
 
                     DataResult<BlockState> result = BlockState.CODEC.parse(NbtOps.INSTANCE, stateReconstructed);
                     BlockState state = result.result().orElse(null);
@@ -671,14 +687,14 @@ public class SignHistorian extends Module {
         Vec3d hitVec = Vec3d.ofCenter(pos);
         BlockHitResult hit = new BlockHitResult(hitVec, mc.player.getHorizontalFacing().getOpposite(), pos, false);
 
-        ItemStack current = mc.player.getInventory().getMainHandStack();
+        ItemStack current = mc.player.getMainHandStack();
         if (current.getItem() != dye) {
-            for (int n = 0; n < mc.player.getInventory().main.size(); n++) {
+            for (int n = 0; n < mc.player.getInventory().size(); n++) {
                 ItemStack stack = mc.player.getInventory().getStack(n);
                 if (stack.getItem() == dye) {
                     if (current.getItem() instanceof SignItem && current.getCount() > 1) dyeSlot = n;
                     if (n < 9) InvUtils.swap(n, true);
-                    else InvUtils.move().from(n).to(mc.player.getInventory().selectedSlot);
+                    else InvUtils.move().from(n).to(mc.player.getInventory().getSelectedSlot());
 
                     timer = 3;
                     return;
@@ -849,7 +865,7 @@ public class SignHistorian extends Module {
 
         if (timer == -1 && dyeSlot != -1) {
             if (dyeSlot < 9) InvUtils.swapBack();
-            else InvUtils.move().from(mc.player.getInventory().selectedSlot).to(dyeSlot);
+            else InvUtils.move().from(mc.player.getInventory().getSelectedSlot()).to(dyeSlot);
             dyeSlot = -1;
             timer = 3;
         }
