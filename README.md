@@ -65,3 +65,12 @@ OldSigns functionality can be accessed in the ChatSigns module settings.
 | **Custom GUI Themes**         | *Adds a few custom GUI theme options to your Meteor GUI config.* Credit to [crosby](https://github.com/RacoonDog) for the original implementation of recolored themes. I may add more themes in the future if I feel like it.                                                                                                       |
 
 <br>
+
+## Search keywords (ignore)
+
+`stardustplus`, `stardust`, `meteor-client`, `meteor-addon`, `minecraft`, `minecraft-java`,
+`minecraft-1-21-5`, `fabric`, `fabric-mod`, `java`, `client-side`, `inventory-management`,
+`inventory-loadouts`, `item-sorting`, `panorama`, `screenshots`, `resource-pack`, `main-menu`,
+`chat-tools`, `sign-tools`, `sign-backup`, `book-tools`, `banner-data`, `elytra`,
+`fireworks`, `archaeology`, `axolotl`, `render-distance`, `fps-target`, `music-controls`,
+`gui-themes`, `2b2t`, `quality-of-life`, `client-utilities`, `gradle`
